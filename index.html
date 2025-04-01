@@ -189,6 +189,7 @@
     <script>
         let blockData = [];
         let attributes = [];
+        let currentTokenId = null;
         const canvas = document.getElementById('myCanvas');
         const ctx = canvas.getContext('2d');
         let web3, accounts, contract;
@@ -283,7 +284,7 @@
                 errorDiv.textContent = "Failed to fetch some block data.";
                 errorDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
-                return;
+                return false;
             }
 
             blockData.forEach(block => {
@@ -302,6 +303,7 @@
             generatePixelImage();
             loadingDiv.style.display = 'none';
             table.style.display = 'table';
+            return true;
         }
 
         function calculateAttributes() {
@@ -366,8 +368,9 @@
                 const isNext = index === nextTokenId;
                 item.innerHTML = `
                     <p>Token ID: ${nft.tokenId} | Blocks ${nft.startBlock}-${nft.endBlock} | 
-                    ${isMinted ? 'Minted' : (isNext ? 'Next to Mint' : 'Not Yet')}</p>
-                    <button onclick="mintNFT(${nft.tokenId})" ${isNext && !isMinted ? '' : 'disabled'}>Mint</button>
+                    ${isMinted ? 'Minted' : 'Available'}</p>
+                    <button onclick="generateImage(${nft.tokenId})" ${isMinted ? 'disabled' : ''}>Generate</button>
+                    <button id="mintBtn${nft.tokenId}" onclick="mintNFT(${nft.tokenId})" style="display: none;" disabled>Mint</button>
                 `;
                 listDiv.appendChild(item);
             });
@@ -383,13 +386,31 @@
                 const isNext = index === nextTokenId;
                 item.querySelector('p').innerText = 
                     `Token ID: ${index} | Blocks ${nftList[index].startBlock}-${nftList[index].endBlock} | 
-                    ${isMinted ? 'Minted' : (isNext ? 'Next to Mint' : 'Not Yet')}`;
-                item.querySelector('button').disabled = !isNext || isMinted;
+                    ${isMinted ? 'Minted' : 'Available'}`;
+                const generateBtn = item.querySelector('button:nth-child(2)');
+                const mintBtn = item.querySelector(`#mintBtn${index}`);
+                generateBtn.disabled = isMinted;
+                mintBtn.style.display = currentTokenId === index && !isMinted ? 'inline-block' : 'none';
+                mintBtn.disabled = !isNext || isMinted;
             });
         }
 
+        async function generateImage(tokenId) {
+            const { startBlock, endBlock } = nftList[tokenId];
+            const success = await loadBlocks(startBlock, endBlock);
+            if (success) {
+                currentTokenId = tokenId;
+                const mintBtn = document.getElementById(`mintBtn${tokenId}`);
+                const mintedStatus = await Promise.all(nftList.map(nft => contract.methods.mintedGroups(nft.groupId).call()));
+                const nextTokenId = mintedStatus.indexOf(false) === -1 ? 10 : mintedStatus.indexOf(false);
+                mintBtn.style.display = 'inline-block';
+                mintBtn.disabled = tokenId !== nextTokenId;
+                updateUI();
+            }
+        }
+
         async function mintNFT(tokenId) {
-            const button = document.querySelector(`button[onclick="mintNFT(${tokenId})"]`);
+            const button = document.getElementById(`mintBtn${tokenId}`);
             button.classList.add('loading');
             button.disabled = true;
             const mintedStatus = await Promise.all(nftList.map(nft => contract.methods.mintedGroups(nft.groupId).call()));
@@ -403,7 +424,6 @@
             }
             try {
                 const { startBlock, endBlock } = nftList[tokenId];
-                await loadBlocks(startBlock, endBlock);
                 const imageData = canvas.toDataURL("image/png").split(',')[1];
                 const metadata = {
                     name: `Shibmap #${attributes[0]}`,
@@ -417,6 +437,8 @@
                     .on('transactionHash', () => showModal('Transaction pending...'))
                     .on('receipt', () => showModal('NFT minted successfully!'))
                     .on('error', (error) => { showModal('Minting failed: ' + error.message); throw error; });
+                currentTokenId = null;
+                canvas.style.display = 'none';
                 updateUI();
             } catch (error) {
                 button.classList.remove('loading');
