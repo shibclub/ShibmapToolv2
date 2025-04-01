@@ -30,6 +30,10 @@
             margin: 10px 0;
             font-size: 16px;
         }
+        .input-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
         button {
             padding: 5px 15px;
             background: linear-gradient(45deg, #ff8c00, #e07b00);
@@ -97,7 +101,7 @@
         .copy-btn:hover {
             background: #e07b00;
         }
-        #loading, #error {
+        #loading, #error, #blockRange {
             text-align: center;
             font-size: 18px;
             color: #ff8c00;
@@ -115,57 +119,9 @@
             height: auto;
             display: none;
         }
-        .nft-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            width: 80%;
-            margin: 20px auto;
-        }
-        .nft-item {
-            background: #333;
-            padding: 15px;
-            border-radius: 10px;
+        .preview-container {
             text-align: center;
-            box-shadow: 0 4px 10px rgba(255, 140, 0, 0.2);
-        }
-        .progress-container {
-            width: 100%;
-            background: #444;
-            border-radius: 5px;
-            margin: 10px 0;
-            display: none;
-        }
-        .progress-bar {
-            height: 20px;
-            background: linear-gradient(45deg, #ff8c00, #e07b00);
-            border-radius: 5px;
-            width: 0%;
-            transition: width 0.3s;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background: #2d2d2d;
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            color: #fff;
-            max-width: 350px;
-            border: 2px solid #ff8c00;
-            box-shadow: 0 0 20px rgba(255, 140, 0, 0.5);
-        }
-        .modal-content button {
-            padding: 10px 20px;
+            margin-top: 20px;
         }
         .attributes-container {
             margin: 20px 0;
@@ -220,8 +176,71 @@
             opacity: 0.7;
             pointer-events: none;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            color: #fff;
+            max-width: 350px;
+            border: 2px solid #ff8c00;
+            box-shadow: 0 0 20px rgba(255, 140, 0, 0.5);
+        }
+        .modal-content p {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .modal-content button {
+            padding: 10px 20px;
+            background: #ff8c00;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .nft-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 80%;
+            margin: 20px auto;
+        }
+        .nft-item {
+            background: #333;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(255, 140, 0, 0.2);
+        }
+        .progress-container {
+            width: 100%;
+            background: #444;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+        .progress-bar {
+            height: 20px;
+            background: linear-gradient(45deg, #ff8c00, #e07b00);
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.3s;
+        }
         @media (max-width: 768px) {
             h1 { font-size: 32px; }
+            .input-container { flex-wrap: wrap; gap: 8px; }
+            button { padding: 3px 8px; font-size: 12px; }
             table { 
                 width: 100%; 
                 display: block;
@@ -257,6 +276,7 @@
         </div>
         <button id="connectWalletBtn" class="action-btn">Connect Wallet</button>
     </div>
+    <div id="blockRange"></div>
     <div id="loading">Loading data...</div>
     <div id="error"></div>
     <div class="nft-list" id="nftList"></div>
@@ -270,7 +290,7 @@
         </thead>
         <tbody id="blockData"></tbody>
     </table>
-    <div>
+    <div class="preview-container">
         <canvas id="myCanvas" width="500" height="500"></canvas>
         <div class="action-buttons">
             <button onclick="downloadImage()" id="downloadButton" style="display: none;" class="action-btn">Download Image</button>
@@ -291,6 +311,8 @@
     <script>
         let blockData = [];
         let attributes = [];
+        let startBlock = 1;
+        let endBlock = 400;
         let currentTokenId = null;
         const canvas = document.getElementById('myCanvas');
         const ctx = canvas.getContext('2d');
@@ -348,36 +370,41 @@
                 return;
             }
             connectButton.classList.add('loading');
-            web3 = new Web3(window.ethereum);
-            accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            if (!accounts.length) {
-                showModal('Please unlock your wallet or connect it.');
-                return;
-            }
-            const chainId = await web3.eth.getChainId();
-            if (chainId !== 109) {
-                try {
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: web3.utils.numberToHex(109) }]
-                    });
-                } catch (switchError) {
-                    if (switchError.code === 4902) {
+            try {
+                web3 = new Web3(window.ethereum);
+                accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (!accounts.length) {
+                    showModal('Please unlock your wallet or connect it.');
+                    return;
+                }
+                const chainId = await web3.eth.getChainId();
+                if (chainId !== 109) {
+                    try {
                         await window.ethereum.request({
-                            method: 'wallet_addEthereumChain',
-                            params: [shibariumMainnet]
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: web3.utils.numberToHex(109) }]
                         });
-                    } else {
-                        showModal('Failed to switch network. Please add Shibarium manually.');
-                        return;
+                    } catch (switchError) {
+                        if (switchError.code === 4902) {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [shibariumMainnet]
+                            });
+                        } else {
+                            showModal('Failed to switch network. Please add Shibarium manually.');
+                            return;
+                        }
                     }
                 }
+                contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+                showModal('Connected to Shibarium successfully!');
+                updateWalletAddress();
+                renderNFTList();
+            } catch (error) {
+                showModal('Connection failed: ' + error.message);
+            } finally {
+                connectButton.classList.remove('loading');
             }
-            contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
-            showModal('Connected to Shibarium successfully!');
-            updateWalletAddress();
-            connectButton.classList.remove('loading');
-            renderNFTList();
         }
 
         async function updateWalletAddress() {
@@ -387,6 +414,21 @@
                 const shortAddress = `${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`;
                 document.getElementById('walletAddress').innerText = shortAddress;
             }
+        }
+
+        async function findNextAvailableGroup() {
+            if (!contract) return null;
+            const currentBlock = await web3.eth.getBlockNumber();
+            const maxGroupId = Math.floor(currentBlock / 400);
+            for (let groupId = 0; groupId <= maxGroupId; groupId++) {
+                const isMinted = await contract.methods.mintedGroups(groupId).call();
+                if (!isMinted) {
+                    startBlock = groupId * 400 + 1;
+                    endBlock = startBlock + 399;
+                    return { startBlock, endBlock, groupId };
+                }
+            }
+            return null;
         }
 
         async function fetchBlockData(blockNumber) {
@@ -424,9 +466,11 @@
             listDiv.innerHTML = '';
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
+            const blockRangeDiv = document.getElementById('blockRange');
 
             loadingDiv.style.display = 'block';
             errorDiv.style.display = 'none';
+            blockRangeDiv.style.display = 'none';
 
             if (!contract) {
                 errorDiv.textContent = "Please connect your wallet first!";
@@ -457,221 +501,8 @@
                 listDiv.appendChild(item);
             });
 
-            loadingDiv.style.display = 'none';
-        }
-
-        async function generateImage(tokenId, startBlock, endBlock) {
-            const tableBody = document.getElementById('blockData');
-            const loadingDiv = document.getElementById('loading');
-            const errorDiv = document.getElementById('error');
-            const table = document.getElementById('blockTable');
-            const canvas = document.getElementById('myCanvas');
-            const downloadButton = document.getElementById('downloadButton');
-            const progressContainer = document.getElementById(`progressContainer${tokenId}`);
-            const progressBar = document.getElementById(`progressBar${tokenId}`);
-            const mintButton = document.getElementById(`mintBtn${tokenId}`);
-
-            tableBody.innerHTML = '';
-            errorDiv.style.display = 'none';
-            loadingDiv.style.display = 'block';
-            table.style.display = 'none';
-            canvas.style.display = 'none';
-            downloadButton.style.display = 'none';
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-
-            const totalSupply = await contract.methods.totalSupply().call();
-            if (parseInt(totalSupply) !== tokenId) {
-                errorDiv.textContent = `Cannot generate Token ID ${tokenId}. Next available is ${totalSupply}.`;
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
-                progressContainer.style.display = 'none';
-                return;
-            }
-
-            const totalBlocks = endBlock - startBlock + 1;
-            blockData = [];
-            for (let i = startBlock; i <= endBlock; i++) {
-                const block = await fetchBlockData(i);
-                blockData.push(block);
-                const progress = ((i - startBlock + 1) / totalBlocks) * 100;
-                progressBar.style.width = `${progress}%`;
-            }
-
-            const hasError = blockData.some(block => block.error);
-            if (hasError) {
-                errorDiv.textContent = "Unable to fetch data, possibly due to CORS restrictions or API unavailability. Check console logs.";
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
-                progressContainer.style.display = 'none';
-                return;
-            }
-
-            const allNotFound = blockData.every(block => block.blockHash === "Not found");
-            if (allNotFound) {
-                errorDiv.textContent = `No data found for blocks ${startBlock} to ${endBlock}. Try a different Block ID.`;
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
-                progressContainer.style.display = 'none';
-                return;
-            }
-
-            blockData.forEach(block => {
-                const row = document.createElement('tr');
-                const shortHash = block.blockHash.length > 10 ? `${block.blockHash.slice(0, 6)}...${block.blockHash.slice(-4)}` : block.blockHash;
-                row.innerHTML = `
-                    <td>${block.blockNumber}</td>
-                    <td>
-                        <div class="block-hash-container">
-                            <span class="block-hash" title="${block.blockHash}">${shortHash}</span>
-                            <button class="copy-btn" onclick="copyToClipboard('${block.blockHash}')">Copy</button>
-                        </div>
-                    </td>
-                    <td>${block.txCount}</td>
-                `;
-                tableBody.appendChild(row);
-            });
-
-            calculateAttributes();
-            generatePixelImage();
-
-            loadingDiv.style.display = 'none';
-            table.style.display = 'table';
-            progressContainer.style.display = 'none';
-            mintButton.style.display = 'inline-block';
-            mintButton.disabled = parseInt(totalSupply) !== tokenId;
-            currentTokenId = tokenId;
-        }
-
-        function calculateAttributes() {
-            attributes = [];
-            const transactionCounts = blockData.map(block => block.txCount);
-            const calcRules = {
-                ShibaBiome: "Based on blocks 1-40 transaction total (0-2000: Forest, 2000-4000: Desert, etc.)",
-                ShibaTerrain: "Based on blocks 41-80 transaction total (0-2500: Sands, 2500-5000: Dust, etc.)",
-                ShibaTreasure: "Based on blocks 81-120 transaction total (0-1666: Bone, 1666-3332: Coin, etc.)",
-                ShibaRelic: "Based on blocks 121-160 transaction total (0-2000: Print, 2000-4000: Totem, etc.)",
-                ShibaSpirit: "Based on blocks 161-200 transaction total (0-4000: None, 4000-8000: Guardian, etc.)",
-                ShibaWeather: "Based on blocks 201-240 transaction total (0-2500: Sunny, 2500-5000: Rainy, etc.)",
-                ShibaTerritory: "Based on blocks 241-280 transaction total (0-3333: Patch, 3333-6666: Den, etc.)",
-                ShibaElement: "Based on blocks 281-320 transaction total (0-2857: Fire, 2857-5714: Water, etc.)",
-                ShibaDanger: "Based on blocks 321-360 transaction total (0-4000: Safe, 4000-8000: Mild, etc.)",
-                ShibaRarity: "Based on blocks 361-400 transaction total (0-2000: Common, 2000-4000: Uncommon, etc.)"
-            };
-
-            for (let i = 0; i < 10; i++) {
-                const groupStart = i * 40;
-                const groupEnd = groupStart + 39;
-                const groupTxCount = transactionCounts.slice(groupStart, groupEnd + 1).reduce((sum, count) => sum + count, 0);
-                const attributeName = attributeOrder[i];
-                const range = attributeRanges[attributeName];
-                const attributeIndex = Math.min(Math.floor(groupTxCount / range), attributeCategories[attributeName].length - 1);
-                const attributeValue = attributeCategories[attributeName][attributeIndex];
-                attributes.push({ name: attributeName, value: attributeValue, rule: calcRules[attributeName] });
-            }
-
-            const attributesList = document.getElementById('attributesList');
-            attributesList.innerHTML = '';
-            attributes.forEach(attr => {
-                const card = document.createElement('div');
-                card.className = 'attribute-card';
-                card.innerHTML = `
-                    <p><strong>${attr.name.replace(/([A-Z])/g, ' $1').trim()}:</strong> ${attr.value}</p>
-                    <p style="font-size: 12px">${attr.rule}</p>
-                `;
-                attributesList.appendChild(card);
-            });
-        }
-
-        function getColorForTxCount(txCount) {
-            if (txCount === 0) return '#FFFFFF';
-            else if (txCount <= 50) return '#D3D3D3';
-            else if (txCount <= 100) return '#FF6347';
-            else if (txCount <= 150) return '#FF4500';
-            else if (txCount <= 200) return '#FFFF00';
-            else if (txCount <= 250) return '#90EE90';
-            else if (txCount <= 300) return '#008000';
-            else if (txCount <= 350) return '#00CED1';
-            else if (txCount <= 400) return '#0000FF';
-            else if (txCount <= 450) return '#800080';
-            else return '#FFD700';
-        }
-
-        function generatePixelImage() {
-            const errorDiv = document.getElementById('error');
-            const canvas = document.getElementById('myCanvas');
-            const downloadButton = document.getElementById('downloadButton');
-
-            if (blockData.length !== 400) {
-                errorDiv.textContent = "Please query 400 blocks of data first!";
-                errorDiv.style.display = 'block';
-                return;
-            }
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const transactionCounts = blockData.map(block => block.txCount);
-            const blockSize = 25;
-
-            for (let i = 0; i < 400; i++) {
-                const row = Math.floor(i / 20);
-                const col = i % 20;
-                const x = col * blockSize;
-                const y = row * blockSize;
-                const txCount = transactionCounts[i];
-                ctx.fillStyle = getColorForTxCount(txCount);
-                ctx.fillRect(x, y, blockSize, blockSize);
-            }
-
-            canvas.style.display = 'block';
-            downloadButton.style.display = 'inline-block';
-        }
-
-        function downloadImage() {
-            const link = document.createElement('a');
-            link.download = 'shibmap_pixel_image.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        }
-
-        async function renderNFTList() {
-            const listDiv = document.getElementById('nftList');
-            listDiv.innerHTML = '';
-            const loadingDiv = document.getElementById('loading');
-            const errorDiv = document.getElementById('error');
-
-            loadingDiv.style.display = 'block';
-            errorDiv.style.display = 'none';
-
-            if (!contract) {
-                errorDiv.textContent = "Please connect your wallet first!";
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
-                return;
-            }
-
-            const totalSupply = await contract.methods.totalSupply().call();
-            const nftList = Array.from({ length: 10 }, (_, i) => {
-                const tokenId = parseInt(totalSupply) + i;
-                const startBlock = tokenId * 400 + 1;
-                const endBlock = startBlock + 399;
-                return { tokenId, startBlock, endBlock };
-            });
-
-            nftList.forEach(nft => {
-                const item = document.createElement('div');
-                item.className = 'nft-item';
-                item.innerHTML = `
-                    <p>Token ID: ${nft.tokenId} | Blocks ${nft.startBlock}-${nft.endBlock} | Available</p>
-                    <button onclick="generateImage(${nft.tokenId}, ${nft.startBlock}, ${nft.endBlock})">Generate</button>
-                    <div class="progress-container" id="progressContainer${nft.tokenId}">
-                        <div class="progress-bar" id="progressBar${nft.tokenId}"></div>
-                    </div>
-                    <button id="mintBtn${nft.tokenId}" onclick="startMintCountdown(${nft.tokenId}, ${nft.startBlock}, ${nft.endBlock})" style="display: none;" disabled>Mint NFT</button>
-                `;
-                listDiv.appendChild(item);
-            });
-
+            blockRangeDiv.textContent = `Available blocks: ${nftList[0].startBlock} to ${nftList[nftList.length - 1].endBlock}`;
+            blockRangeDiv.style.display = 'block';
             loadingDiv.style.display = 'none';
         }
 
