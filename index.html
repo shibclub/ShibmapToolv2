@@ -196,7 +196,6 @@
         const CONTRACT_ADDRESS = "0xeFb2986b14B5975ceD3692C10B66A84B07E998DE";
         const CONTRACT_ABI = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"string","name":"uri","type":"string"},{"internalType":"string[]","name":"attributes","type":"string[]"},{"internalType":"uint256","name":"startBlock","type":"uint256"},{"internalType":"uint256","name":"endBlock","type":"uint256"}],"name":"mintNFT","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"string","name":"newURI","type":"string"},{"internalType":"string[]","name":"newAttributes","type":"string[]"}],"name":"updateTokenMetadata","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"tokenURI","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"getTokenAttributes","outputs":[{"internalType":"string[]","name":"","type":"string[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"ownerOf","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"transferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"approve","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"getApproved","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"bool","name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"tokenOwner","type":"address"},{"internalType":"address","name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"groupId","type":"uint256"}],"name":"mintedGroups","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"string","name":"uri","type":"string"},{"indexed":false,"internalType":"string[]","name":"attributes","type":"string[]"}],"name":"Minted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"string","name":"newURI","type":"string"},{"indexed":false,"internalType":"string[]","name":"newAttributes","type":"string[]"}],"name":"MetadataUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"}],"name":"OwnershipRenounced","type":"event"}];
         const shibariumMainnet = {chainId: 109,chainName: 'Shibarium',nativeCurrency: { name: 'BONE', symbol: 'BONE', decimals: 18 },rpcUrls: ['https://www.shibrpc.com'],blockExplorerUrls: ['https://shibariumscan.io']};
-        const nftList = Array.from({ length: 10 }, (_, i) => ({ tokenId: i, startBlock: i * 400 + 1, endBlock: (i + 1) * 400, groupId: i }));
 
         function showModal(message) {
             document.getElementById('modalMessage').innerHTML = message;
@@ -359,13 +358,23 @@
             const listDiv = document.createElement('div');
             listDiv.className = 'nft-list';
             document.body.appendChild(listDiv);
+            const totalSupply = parseInt(await contract.methods.totalSupply().call());
+            const nftList = Array.from({ length: 10 }, (_, i) => {
+                const tokenId = totalSupply + i;
+                return {
+                    tokenId: tokenId,
+                    startBlock: tokenId * 400 + 1,
+                    endBlock: (tokenId + 1) * 400,
+                    groupId: tokenId
+                };
+            });
             const mintedStatus = await Promise.all(nftList.map(nft => contract.methods.mintedGroups(nft.groupId).call()));
-            const nextTokenId = mintedStatus.indexOf(false) === -1 ? 10 : mintedStatus.indexOf(false);
+            const nextTokenId = totalSupply + (mintedStatus.indexOf(false) === -1 ? 10 : mintedStatus.indexOf(false));
             nftList.forEach((nft, index) => {
                 const item = document.createElement('div');
                 item.className = 'nft-item';
                 const isMinted = mintedStatus[index];
-                const isNext = index === nextTokenId;
+                const isNext = nft.tokenId === nextTokenId;
                 item.innerHTML = `
                     <p>Token ID: ${nft.tokenId} | Blocks ${nft.startBlock}-${nft.endBlock} | 
                     ${isMinted ? 'Minted' : 'Available'}</p>
@@ -378,33 +387,52 @@
         }
 
         async function updateUI() {
+            const totalSupply = parseInt(await contract.methods.totalSupply().call());
+            const nftList = Array.from({ length: 10 }, (_, i) => {
+                const tokenId = totalSupply + i;
+                return {
+                    tokenId: tokenId,
+                    startBlock: tokenId * 400 + 1,
+                    endBlock: (tokenId + 1) * 400,
+                    groupId: tokenId
+                };
+            });
             const mintedStatus = await Promise.all(nftList.map(nft => contract.methods.mintedGroups(nft.groupId).call()));
-            const nextTokenId = mintedStatus.indexOf(false) === -1 ? 10 : mintedStatus.indexOf(false);
+            const nextTokenId = totalSupply + (mintedStatus.indexOf(false) === -1 ? 10 : mintedStatus.indexOf(false));
             const items = document.querySelectorAll('.nft-item');
             items.forEach((item, index) => {
+                const nft = nftList[index];
                 const isMinted = mintedStatus[index];
-                const isNext = index === nextTokenId;
+                const isNext = nft.tokenId === nextTokenId;
                 item.querySelector('p').innerText = 
-                    `Token ID: ${index} | Blocks ${nftList[index].startBlock}-${nftList[index].endBlock} | 
+                    `Token ID: ${nft.tokenId} | Blocks ${nft.startBlock}-${nft.endBlock} | 
                     ${isMinted ? 'Minted' : 'Available'}`;
                 const generateBtn = item.querySelector('button:nth-child(2)');
-                const mintBtn = item.querySelector(`#mintBtn${index}`);
+                const mintBtn = item.querySelector(`#mintBtn${nft.tokenId}`);
                 generateBtn.disabled = isMinted;
-                mintBtn.style.display = currentTokenId === index && !isMinted ? 'inline-block' : 'none';
+                mintBtn.style.display = currentTokenId === nft.tokenId && !isMinted ? 'inline-block' : 'none';
                 mintBtn.disabled = !isNext || isMinted;
             });
         }
 
         async function generateImage(tokenId) {
-            const { startBlock, endBlock } = nftList[tokenId];
-            const success = await loadBlocks(startBlock, endBlock);
+            const nft = Array.from({ length: 10 }, (_, i) => {
+                const totalSupply = parseInt(contract.methods.totalSupply().call());
+                const tokenId = totalSupply + i;
+                return {
+                    tokenId: tokenId,
+                    startBlock: tokenId * 400 + 1,
+                    endBlock: (tokenId + 1) * 400,
+                    groupId: tokenId
+                };
+            }).find(nft => nft.tokenId === tokenId);
+            const success = await loadBlocks(nft.startBlock, nft.endBlock);
             if (success) {
                 currentTokenId = tokenId;
                 const mintBtn = document.getElementById(`mintBtn${tokenId}`);
-                const mintedStatus = await Promise.all(nftList.map(nft => contract.methods.mintedGroups(nft.groupId).call()));
-                const nextTokenId = mintedStatus.indexOf(false) === -1 ? 10 : mintedStatus.indexOf(false);
+                const totalSupply = parseInt(await contract.methods.totalSupply().call());
                 mintBtn.style.display = 'inline-block';
-                mintBtn.disabled = tokenId !== nextTokenId;
+                mintBtn.disabled = tokenId !== totalSupply;
                 updateUI();
             }
         }
@@ -413,17 +441,24 @@
             const button = document.getElementById(`mintBtn${tokenId}`);
             button.classList.add('loading');
             button.disabled = true;
-            const mintedStatus = await Promise.all(nftList.map(nft => contract.methods.mintedGroups(nft.groupId).call()));
-            const nextTokenId = mintedStatus.indexOf(false) === -1 ? 10 : mintedStatus.indexOf(false);
-            if (tokenId !== nextTokenId) {
-                showModal(`Cannot mint Token ID ${tokenId}. Next available is ${nextTokenId}.`);
+            const totalSupply = parseInt(await contract.methods.totalSupply().call());
+            if (tokenId !== totalSupply) {
+                showModal(`Cannot mint Token ID ${tokenId}. Next available is ${totalSupply}.`);
                 button.classList.remove('loading');
                 button.disabled = true;
                 updateUI();
                 return;
             }
             try {
-                const { startBlock, endBlock } = nftList[tokenId];
+                const nft = Array.from({ length: 10 }, (_, i) => {
+                    const tokenId = totalSupply + i;
+                    return {
+                        tokenId: tokenId,
+                        startBlock: tokenId * 400 + 1,
+                        endBlock: (tokenId + 1) * 400,
+                        groupId: tokenId
+                    };
+                }).find(nft => nft.tokenId === tokenId);
                 const imageData = canvas.toDataURL("image/png").split(',')[1];
                 const metadata = {
                     name: `Shibmap #${attributes[0]}`,
@@ -432,7 +467,7 @@
                     attributes: attributes.map((value, i) => ({ trait_type: `Attr${i}`, value }))
                 };
                 const tokenURI = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
-                await contract.methods.mintNFT(tokenURI, attributes, startBlock, endBlock)
+                await contract.methods.mintNFT(tokenURI, attributes, nft.startBlock, nft.endBlock)
                     .send({ from: accounts[0] })
                     .on('transactionHash', () => showModal('Transaction pending...'))
                     .on('receipt', () => showModal('NFT minted successfully!'))
