@@ -187,7 +187,7 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@4.3.1/dist/web3.min.js"></script>
     <script>
         let blockData = [];
         let attributes = [];
@@ -219,25 +219,72 @@
                 return;
             }
             connectButton.classList.add('loading');
-            web3 = new Web3(window.ethereum);
-            accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            const chainId = await web3.eth.getChainId();
-            if (chainId !== 109) {
+            try {
+                const Web3 = window.Web3;
+                web3 = new Web3(window.ethereum);
                 try {
-                    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: web3.utils.numberToHex(109) }] });
-                } catch (switchError) {
-                    if (switchError.code === 4902) {
-                        await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [shibariumMainnet] });
-                    } else {
-                        showModal('Failed to switch network.');
-                        return;
+                    accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                } catch (error) {
+                    showModal('Failed to connect to wallet: ' + error.message);
+                    connectButton.classList.remove('loading');
+                    return;
+                }
+                let chainId;
+                try {
+                    chainId = await web3.eth.getChainId();
+                    chainId = Number(chainId);
+                } catch (error) {
+                    showModal('Failed to get chain ID: ' + error.message);
+                    connectButton.classList.remove('loading');
+                    return;
+                }
+                if (chainId !== 109) {
+                    try {
+                        const response = await fetch(shibariumMainnet.rpcUrls[0], {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1 })
+                        });
+                        if (!response.ok) {
+                            throw new Error('Shibarium RPC is not responding.');
+                        }
+                        await window.ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: web3.utils.toHex(109) }]
+                        });
+                    } catch (switchError) {
+                        if (switchError.code === 4902) {
+                            try {
+                                await window.ethereum.request({
+                                    method: 'wallet_addEthereumChain',
+                                    params: [shibariumMainnet]
+                                });
+                            } catch (addError) {
+                                showModal('Failed to add Shibarium network: ' + addError.message);
+                                connectButton.classList.remove('loading');
+                                return;
+                            }
+                        } else {
+                            showModal('Failed to switch network: ' + switchError.message);
+                            connectButton.classList.remove('loading');
+                            return;
+                        }
                     }
                 }
+                try {
+                    contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+                } catch (error) {
+                    showModal('Failed to initialize contract: ' + error.message);
+                    connectButton.classList.remove('loading');
+                    return;
+                }
+                await updateWalletAddress();
+                connectButton.classList.remove('loading');
+                document.getElementById('queryBtn').style.display = 'inline-block';
+            } catch (error) {
+                showModal('An unexpected error occurred: ' + error.message);
+                connectButton.classList.remove('loading');
             }
-            contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
-            updateWalletAddress();
-            connectButton.classList.remove('loading');
-            document.getElementById('queryBtn').style.display = 'inline-block';
         }
 
         async function updateWalletAddress() {
@@ -268,18 +315,15 @@
             const errorDiv = document.getElementById('error');
             const table = document.getElementById('blockTable');
             const canvas = document.getElementById('myCanvas');
-
             tableBody.innerHTML = '';
             errorDiv.style.display = 'none';
             loadingDiv.style.display = 'block';
             table.style.display = 'none';
             canvas.style.display = 'none';
-
             const promises = [];
             for (let i = startBlock; i <= endBlock; i++) {
                 promises.push(fetchBlockData(i));
             }
-
             blockData = await Promise.all(promises);
             if (blockData.some(block => block.blockHash === "Error")) {
                 errorDiv.textContent = "Failed to fetch some block data.";
@@ -287,7 +331,6 @@
                 loadingDiv.style.display = 'none';
                 return false;
             }
-
             blockData.forEach(block => {
                 const row = document.createElement('tr');
                 const shortHash = block.blockHash.slice(0, 6) + '...' + block.blockHash.slice(-4);
@@ -299,7 +342,6 @@
                 `;
                 tableBody.appendChild(row);
             });
-
             calculateAttributes();
             generatePixelImage();
             loadingDiv.style.display = 'none';
@@ -359,7 +401,7 @@
         async function renderNFTList() {
             const listDiv = document.getElementById('nftList');
             listDiv.innerHTML = '';
-            const totalSupply = parseInt(await contract.methods.totalSupply().call());
+            const totalSupply = Number(await contract.methods.totalSupply().call());
             const nftList = Array.from({ length: 10 }, (_, i) => {
                 const tokenId = totalSupply + i;
                 return {
@@ -390,7 +432,7 @@
         }
 
         async function updateUI() {
-            const totalSupply = parseInt(await contract.methods.totalSupply().call());
+            const totalSupply = Number(await contract.methods.totalSupply().call());
             const nftList = Array.from({ length: 10 }, (_, i) => {
                 const tokenId = totalSupply + i;
                 return {
@@ -419,8 +461,8 @@
         }
 
         async function generateImage(tokenId) {
+            const totalSupply = Number(await contract.methods.totalSupply().call());
             const nft = Array.from({ length: 10 }, (_, i) => {
-                const totalSupply = parseInt(await contract.methods.totalSupply().call());
                 const tokenId = totalSupply + i;
                 return {
                     tokenId: tokenId,
@@ -433,7 +475,7 @@
             if (success) {
                 currentTokenId = tokenId;
                 const mintBtn = document.getElementById(`mintBtn${tokenId}`);
-                const totalSupply = parseInt(await contract.methods.totalSupply().call());
+                const totalSupply = Number(await contract.methods.totalSupply().call());
                 mintBtn.style.display = 'inline-block';
                 mintBtn.disabled = tokenId !== totalSupply;
                 updateUI();
@@ -444,7 +486,7 @@
             const button = document.getElementById(`mintBtn${tokenId}`);
             button.classList.add('loading');
             button.disabled = true;
-            const totalSupply = parseInt(await contract.methods.totalSupply().call());
+            const totalSupply = parseInt(await contract.totalSupply());
             const expectedTokenId = totalSupply;
             if (tokenId !== expectedTokenId) {
                 showModal(`Cannot mint Token ID ${tokenId}. Next available is ${expectedTokenId}.`);
@@ -467,7 +509,7 @@
                     attributes: attributes.map((value, i) => ({ trait_type: `Attr${i}`, value }))
                 };
                 const tokenURI = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
-                await contract.methods.mintNFT(tokenURI, attributes, nft.startBlock, nft.endBlock)
+                await contract.mintNFT(tokenURI, attributes, nft.startBlock, nft.endBlock)
                     .send({ from: accounts[0] })
                     .on('transactionHash', () => showModal('Transaction pending...'))
                     .on('receipt', () => showModal('NFT minted successfully!'))
