@@ -68,43 +68,38 @@
             box-shadow: 0 8px 20px rgba(255, 140, 0, 0.3);
             background-color: #fff;
             width: 100%;
-            max-width: 1000px;
+            max-width: 500px;
             height: auto;
-            display: none;
         }
-        .preview-container {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .attributes-container {
+        .nft-container {
             margin: 20px 0;
             width: 80%;
             max-width: 1000px;
         }
-        .attributes-container h2 {
+        .nft-container h2 {
             font-size: 32px;
             color: #ff8c00;
             text-align: center;
         }
-        #attributesList {
+        #nftList {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
+            gap: 20px;
         }
-        .attribute-card {
+        .nft-card {
             background: #333;
-            padding: 10px;
+            padding: 15px;
             border-radius: 10px;
             box-shadow: 0 4px 10px rgba(255, 140, 0, 0.2);
             text-align: center;
         }
-        .attribute-card p {
-            margin: 5px 0;
-            font-size: 14px;
-        }
-        .attribute-card.minted {
+        .nft-card.minted {
             background: #444;
             opacity: 0.7;
+        }
+        .nft-card p {
+            margin: 5px 0;
+            font-size: 14px;
         }
         .mint-btn {
             margin-top: 10px;
@@ -128,28 +123,19 @@
             opacity: 0.7;
             pointer-events: none;
         }
-        .action-buttons {
-            display: flex;
-            gap: 15px;
-            margin: 20px 0;
-        }
-        .action-btn {
-            padding: 10px 20px;
-            font-size: 16px;
+        .download-btn {
+            margin-top: 10px;
+            padding: 8px 16px;
+            font-size: 14px;
             background: linear-gradient(45deg, #ff8c00, #e07b00);
             color: #1a1a1a;
             border: none;
-            border-radius: 10px;
+            border-radius: 5px;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.2s;
         }
-        .action-btn:hover {
+        .download-btn:hover {
             transform: scale(1.05);
-            box-shadow: 0 0 15px rgba(255, 140, 0, 0.7);
-        }
-        .action-btn:disabled {
-            background: #666;
-            cursor: not-allowed;
         }
         .modal {
             display: none;
@@ -189,12 +175,11 @@
             .input-container { flex-wrap: wrap; gap: 8px; }
             button { padding: 3px 8px; font-size: 12px; }
             canvas { max-width: 300px; }
-            .attributes-container h2 { font-size: 24px; }
-            #attributesList { grid-template-columns: 1fr; gap: 8px; }
-            .attribute-card { padding: 8px; }
-            .attribute-card p { font-size: 12px; }
-            .action-btn { padding: 8px 16px; font-size: 14px; }
-            .mint-btn { padding: 6px 12px; font-size: 12px; }
+            .nft-container h2 { font-size: 24px; }
+            #nftList { grid-template-columns: 1fr; gap: 15px; }
+            .nft-card { padding: 10px; }
+            .nft-card p { font-size: 12px; }
+            .mint-btn, .download-btn { padding: 6px 12px; font-size: 12px; }
             .modal-content { max-width: 90%; padding: 15px; }
         }
     </style>
@@ -213,15 +198,9 @@
     <div id="blockRange"></div>
     <div id="loading">Fetching blocks...</div>
     <div id="error"></div>
-    <div class="preview-container">
-        <canvas id="myCanvas" width="1000" height="400"></canvas>
-        <div class="action-buttons">
-            <button onclick="downloadImage()" id="downloadButton" style="display: none;" class="action-btn">Download Image</button>
-        </div>
-    </div>
-    <div class="attributes-container">
-        <h2>Shibmap Attributes</h2>
-        <div id="attributesList"></div>
+    <div class="nft-container">
+        <h2>Shibmap NFTs</h2>
+        <div id="nftList"></div>
     </div>
     <div id="modal" class="modal">
         <div class="modal-content">
@@ -236,11 +215,10 @@
         let attributesList = [];
         let groupRanges = [];
         let tokenIds = [];
-        const canvas = document.getElementById('myCanvas');
-        const ctx = canvas.getContext('2d');
+        let canvases = [];
         let web3, accounts, contract;
         const CONTRACT_ADDRESS = "0xeFb2986b14B5975ceD3692C10B66A84B07E998DE";
-        const CONTRACT_ABI = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"string","name":"uri","type":"string"},{"internalType":"string[]","name":"attributes","type":"string[]"},{"internalType":"uint256","name":"startBlock","type":"uint256"},{"internalType":"uint256","name":"endBlock","type":"uint256"}],"name":"mintNFT","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"string","name":"newURI","type":"string"},{"internalType":"string[]","name":"newAttributes","type":"string[]"}],"name":"updateTokenMetadata","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"tokenURI","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"getTokenAttributes","outputs":[{"internalType":"string[]","name":"","type":"string[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"ownerOf","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"transferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"approve","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"getApproved","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"bool","name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"tokenOwner","type":"address"},{"internalType":"address","name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"groupId","type":"uint256"}],"name":"mintedGroups","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"string","name":"uri","type":"string"},{"indexed":false,"internalType":"string[]","name":"attributes","type":"string[]"}],"name":"Minted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"string","name":"newURI","type":"string"},{"indexed":false,"internalType":"string[]","name":"newAttributes","type":"string[]"}],"name":"MetadataUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"}],"name":"OwnershipRenounced","type":"event"}];
+        const CONTRACT_ABI = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"string","name":"uri","type":"string"},{"internalType":"string[]","name":"attributes","type":"string[]"},{"internalType":"uint256","name":"startBlock","type":"uint256"},{"internalType":"uint256","name":"endBlock","type":"uint256"}],"name":"mintNFT","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"string","name":"newURI","type":"string"},{"internalType":"string[]","name":"newAttributes","type":"string[]"}],"name":"updateTokenMetadata","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"tokenURI","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"getTokenAttributes","outputs":[{"internalType":"string[]","name":"","type":"string[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"ownerOf","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"土地","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"transferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"approve","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"getApproved","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"bool","name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"tokenOwner","type":"address"},{"internalType":"address","name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"groupId","type":"uint256"}],"name":"mintedGroups","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"string","name":"uri","type":"string"},{"indexed":false,"internalType":"string[]","name":"attributes","type":"string[]"}],"name":"Minted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"string","name":"newURI","type":"string"},{"indexed":false,"internalType":"string[]","name":"newAttributes","type":"string[]"}],"name":"MetadataUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"}],"name":"OwnershipRenounced","type":"event"}];
         const shibariumMainnet = {chainId: 109,chainName: 'Shibarium',nativeCurrency: { name: 'BONE', symbol: 'BONE', decimals: 18 },rpcUrls: ['https://www.shibrpc.com'],blockExplorerUrls: ['https://shibariumscan.io']};
         const attributeCategories = {
             ShibaBiome: ["Shiba Forest", "Shiba Desert", "Shiba Tundra", "Shiba Volcano", "Shiba Swamp", "Shiba Savanna", "Shiba Mountain", "Shiba Beach", "Shiba Plains", "Shiba Bamboo Grove"],
@@ -361,16 +339,12 @@
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
             const blockRangeDiv = document.getElementById('blockRange');
-            const canvas = document.getElementById('myCanvas');
-            const downloadButton = document.getElementById('downloadButton');
-            const attributesListDiv = document.getElementById('attributesList');
+            const nftListDiv = document.getElementById('nftList');
 
             errorDiv.style.display = 'none';
             blockRangeDiv.style.display = 'none';
             loadingDiv.style.display = 'block';
-            canvas.style.display = 'none';
-            downloadButton.style.display = 'none';
-            attributesListDiv.innerHTML = '';
+            nftListDiv.innerHTML = '';
 
             groupRanges = await findNextAvailableGroups();
             if (groupRanges.length < 10) {
@@ -386,6 +360,7 @@
             blockData = [];
             attributesList = [];
             tokenIds = [];
+            canvases = [];
 
             const totalSupply = await contract.methods.totalSupply().call();
             let baseTokenId = parseInt(totalSupply);
@@ -398,7 +373,7 @@
                 }
 
                 const groupData = await Promise.all(promises);
-                blockData = blockData.concat(groupData);
+                blockData[groupIndex] = groupData;
 
                 const hasError = groupData.some(block => block.error);
                 if (hasError) {
@@ -412,10 +387,7 @@
                 generateNFT(groupIndex, groupData, tokenIds[groupIndex]);
             }
 
-            generatePixelImage();
             loadingDiv.style.display = 'none';
-            canvas.style.display = 'block';
-            downloadButton.style.display = 'inline-block';
         }
 
         function generateNFT(groupIndex, groupData, tokenId) {
@@ -434,16 +406,25 @@
             attributesList[groupIndex] = attributes;
 
             const range = groupRanges[groupIndex];
-            const attributesListDiv = document.getElementById('attributesList');
+            const nftListDiv = document.getElementById('nftList');
             const card = document.createElement('div');
-            card.className = 'attribute-card';
+            card.className = 'nft-card';
             card.id = `nft-${groupIndex}`;
-            card.innerHTML = `
-                <p><strong>NFT ${groupIndex + 1} (Token ID: ${tokenId}, Blocks: ${range.startBlock}-${range.endBlock}):</strong></p>
-                ${attributes.map(attr => `<p>${attr.name.replace(/([A-Z])/g, ' $1').trim()}: ${attr.value}</p>`).join('')}
-                <button class="mint-btn" onclick="startMintCountdown(${groupIndex}, ${tokenId})">Mint</button>
-            `;
-            attributesListDiv.appendChild(card);
+
+            const canvas = document.createElement('canvas');
+            canvas.id = `canvas-${groupIndex}`;
+            canvas.width = 500;
+            canvas.height = 500;
+            canvases[groupIndex] = canvas;
+
+            card.appendChild(canvas);
+            card.innerHTML += `<p><strong>NFT ${groupIndex + 1} (Token ID: ${tokenId}, Blocks: ${range.startBlock}-${range.endBlock}):</strong></p>` +
+                attributes.map(attr => `<p>${attr.name.replace(/([A-Z])/g, ' $1').trim()}: ${attr.value}</p>`).join('') +
+                `<button class="download-btn" onclick="downloadImage(${groupIndex})">Download Image</button>` +
+                `<button class="mint-btn" onclick="startMintCountdown(${groupIndex})">Mint NFT</button>`;
+            nftListDiv.appendChild(card);
+
+            generatePixelImage(groupIndex, groupData);
         }
 
         function getColorForTxCount(txCount) {
@@ -460,154 +441,31 @@
             else return '#FFD700';
         }
 
-        function generatePixelImage() {
-            const canvas = document.getElementById('myCanvas');
-            const downloadButton = document.getElementById('downloadButton');
-
+        function generatePixelImage(groupIndex, groupData) {
+            const canvas = canvases[groupIndex];
+            const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const transactionCounts = blockData.map(block => block.txCount);
-            const blockSize = 5;
 
-            for (let i = 0; i < 4000; i++) {
-                const row = Math.floor(i / 100);
-                const col = i % 100;
+            const transactionCounts = groupData.map(block => block.txCount);
+            const blockSize = 25;
+
+            for (let i = 0; i < 400; i++) {
+                const row = Math.floor(i / 20);
+                const col = i % 20;
                 const x = col * blockSize;
                 const y = row * blockSize;
                 const txCount = transactionCounts[i];
                 ctx.fillStyle = getColorForTxCount(txCount);
                 ctx.fillRect(x, y, blockSize, blockSize);
             }
-
-            canvas.style.display = 'block';
-            downloadButton.style.display = 'inline-block';
         }
 
-        function downloadImage() {
+        function downloadImage(groupIndex) {
+            const canvas = canvases[groupIndex];
             const link = document.createElement('a');
-            link.download = 'shibmap_pixel_image.png';
+            link.download = `shibmap_nft_${groupIndex + 1}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
-        }
-
-        async function startFetching() {
-            const loadingDiv = document.getElementById('loading');
-            const errorDiv = document.getElementById('error');
-            const blockRangeDiv = document.getElementById('blockRange');
-            const canvas = document.getElementById('myCanvas');
-            const downloadButton = document.getElementById('downloadButton');
-            const attributesListDiv = document.getElementById('attributesList');
-
-            errorDiv.style.display = 'none';
-            blockRangeDiv.style.display = 'none';
-            loadingDiv.style.display = 'block';
-            canvas.style.display = 'none';
-            downloadButton.style.display = 'none';
-            attributesListDiv.innerHTML = '';
-
-            groupRanges = await findNextAvailableGroups();
-            if (groupRanges.length < 10) {
-                errorDiv.textContent = "Not enough available block ranges to preview 10 NFTs.";
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
-                return;
-            }
-
-            blockRangeDiv.textContent = `Fetching blocks ${groupRanges[0].startBlock} to ${groupRanges[9].endBlock}...`;
-            blockRangeDiv.style.display = 'block';
-
-            blockData = [];
-            attributesList = [];
-            tokenIds = [];
-
-            const totalSupply = await contract.methods.totalSupply().call();
-            let baseTokenId = parseInt(totalSupply);
-
-            for (let groupIndex = 0; groupIndex < 10; groupIndex++) {
-                const range = groupRanges[groupIndex];
-                const promises = [];
-                for (let i = range.startBlock; i <= range.endBlock; i++) {
-                    promises.push(fetchBlockData(i));
-                }
-
-                const groupData = await Promise.all(promises);
-                blockData = blockData.concat(groupData);
-
-                const hasError = groupData.some(block => block.error);
-                if (hasError) {
-                    errorDiv.textContent = `Error fetching blocks ${range.startBlock}-${range.endBlock}.`;
-                    errorDiv.style.display = 'block';
-                    loadingDiv.style.display = 'none';
-                    return;
-                }
-
-                tokenIds[groupIndex] = baseTokenId + groupIndex;
-                generateNFT(groupIndex, groupData, tokenIds[groupIndex]);
-            }
-
-            generatePixelImage();
-            loadingDiv.style.display = 'none';
-        }
-
-        function generateNFT(groupIndex, groupData, tokenId) {
-            const transactionCounts = groupData.map(block => block.txCount);
-            let attributes = [];
-            for (let i = 0; i < 10; i++) {
-                const segmentStart = i * 40;
-                const segmentEnd = segmentStart + 39;
-                const segmentTxCount = transactionCounts.slice(segmentStart, segmentEnd + 1).reduce((sum, count) => sum + count, 0);
-                const attributeName = attributeOrder[i];
-                const range = attributeRanges[attributeName];
-                const attributeIndex = Math.min(Math.floor(segmentTxCount / range), attributeCategories[attributeName].length - 1);
-                const attributeValue = attributeCategories[attributeName][attributeIndex];
-                attributes.push({ name: attributeName, value: attributeValue });
-            }
-            attributesList[groupIndex] = attributes;
-
-            const range = groupRanges[groupIndex];
-            const attributesListDiv = document.getElementById('attributesList');
-            const card = document.createElement('div');
-            card.className = 'attribute-card';
-            card.id = `nft-${groupIndex}`;
-            card.innerHTML = `<p><strong>NFT ${groupIndex + 1} (Token ID: ${tokenId}, Blocks: ${range.startBlock}-${range.endBlock}):</strong></p>` +
-                attributes.map(attr => `<p>${attr.name.replace(/([A-Z])/g, ' $1').trim()}: ${attr.value}</p>`).join('') +
-                `<button class="mint-btn" onclick="startMintCountdown(${groupIndex})">Mint NFT</button>`;
-            attributesListDiv.appendChild(card);
-        }
-
-        function getColorForTxCount(txCount) {
-            if (txCount === 0) return '#FFFFFF';
-            else if (txCount <= 50) return '#D3D3D3';
-            else if (txCount <= 100) return '#FF6347';
-            else if (txCount <= 150) return '#FF4500';
-            else if (txCount <= 200) return '#FFFF00';
-            else if (txCount <= 250) return '#90EE90';
-            else if (txCount <= 300) return '#008000';
-            else if (txCount <= 350) return '#00CED1';
-            else if (txCount <= 400) return '#0000FF';
-            else if (txCount <= 450) return '#800080';
-            else return '#FFD700';
-        }
-
-        function generatePixelImage() {
-            const canvas = document.getElementById('myCanvas');
-            const downloadButton = document.getElementById('downloadButton');
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const transactionCounts = blockData.map(block => block.txCount);
-            const blockSize = 5;
-
-            for (let i = 0; i < 4000; i++) {
-                const row = Math.floor(i / 100);
-                const col = i % 100;
-                const x = col * blockSize;
-                const y = row * blockSize;
-                const txCount = transactionCounts[i];
-                ctx.fillStyle = getColorForTxCount(txCount);
-                ctx.fillRect(x, y, blockSize, blockSize);
-            }
-
-            canvas.style.display = 'block';
-            downloadButton.style.display = 'inline-block';
         }
 
         async function startMintCountdown(groupIndex) {
@@ -648,6 +506,7 @@
                 }
 
                 const range = groupRanges[groupIndex];
+                const canvas = canvases[groupIndex];
                 const imageData = canvas.toDataURL("image/png").split(',')[1];
                 const metadata = {
                     description: "A unique Shibmap NFT based on Shibarium blockchain data",
