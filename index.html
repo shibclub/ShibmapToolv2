@@ -178,6 +178,7 @@
     <div>
         <canvas id="myCanvas" width="500" height="500"></canvas>
     </div>
+    <div class="nft-list" id="nftList"></div>
     <div id="modal" class="modal">
         <div class="modal-content">
             <p id="modalMessage"></p>
@@ -355,9 +356,8 @@
         }
 
         async function renderNFTList() {
-            const listDiv = document.createElement('div');
-            listDiv.className = 'nft-list';
-            document.body.appendChild(listDiv);
+            const listDiv = document.getElementById('nftList');
+            listDiv.innerHTML = '';
             const totalSupply = parseInt(await contract.methods.totalSupply().call());
             const nftList = Array.from({ length: 10 }, (_, i) => {
                 const tokenId = totalSupply + i;
@@ -378,12 +378,14 @@
                 item.innerHTML = `
                     <p>Token ID: ${nft.tokenId} | Blocks ${nft.startBlock}-${nft.endBlock} | 
                     ${isMinted ? 'Minted' : 'Available'}</p>
-                    <button onclick="generateImage(${nft.tokenId})" ${isMinted ? 'disabled' : ''}>Generate</button>
+                    <button class="generate-btn" ${isMinted ? 'disabled' : ''}>Generate</button>
                     <button id="mintBtn${nft.tokenId}" onclick="mintNFT(${nft.tokenId})" style="display: none;" disabled>Mint</button>
                 `;
+                const generateBtn = item.querySelector('.generate-btn');
+                generateBtn.addEventListener('click', () => generateImage(nft.tokenId));
                 listDiv.appendChild(item);
             });
-            contract.events.Minted({ fromBlock: 'latest' }).on('data', updateUI).on('error', console.error);
+            contract.events.Minted({ fromBlock: 'latest' }).on('data', updateUI);
         }
 
         async function updateUI() {
@@ -407,7 +409,7 @@
                 item.querySelector('p').innerText = 
                     `Token ID: ${nft.tokenId} | Blocks ${nft.startBlock}-${nft.endBlock} | 
                     ${isMinted ? 'Minted' : 'Available'}`;
-                const generateBtn = item.querySelector('button:nth-child(2)');
+                const generateBtn = item.querySelector('.generate-btn');
                 const mintBtn = item.querySelector(`#mintBtn${nft.tokenId}`);
                 generateBtn.disabled = isMinted;
                 mintBtn.style.display = currentTokenId === nft.tokenId && !isMinted ? 'inline-block' : 'none';
@@ -417,7 +419,7 @@
 
         async function generateImage(tokenId) {
             const nft = Array.from({ length: 10 }, (_, i) => {
-                const totalSupply = parseInt(contract.methods.totalSupply().call());
+                const totalSupply = parseInt(await contract.methods.totalSupply().call());
                 const tokenId = totalSupply + i;
                 return {
                     tokenId: tokenId,
@@ -442,23 +444,20 @@
             button.classList.add('loading');
             button.disabled = true;
             const totalSupply = parseInt(await contract.methods.totalSupply().call());
-            if (tokenId !== totalSupply) {
-                showModal(`Cannot mint Token ID ${tokenId}. Next available is ${totalSupply}.`);
+            const expectedTokenId = totalSupply;
+            if (tokenId !== expectedTokenId) {
+                showModal(`Cannot mint Token ID ${tokenId}. Next available is ${expectedTokenId}.`);
                 button.classList.remove('loading');
                 button.disabled = true;
                 updateUI();
                 return;
             }
             try {
-                const nft = Array.from({ length: 10 }, (_, i) => {
-                    const tokenId = totalSupply + i;
-                    return {
-                        tokenId: tokenId,
-                        startBlock: tokenId * 400 + 1,
-                        endBlock: (tokenId + 1) * 400,
-                        groupId: tokenId
-                    };
-                }).find(nft => nft.tokenId === tokenId);
+                const nft = {
+                    tokenId: tokenId,
+                    startBlock: tokenId * 400 + 1,
+                    endBlock: (tokenId + 1) * 400
+                };
                 const imageData = canvas.toDataURL("image/png").split(',')[1];
                 const metadata = {
                     name: `Shibmap #${attributes[0]}`,
@@ -482,9 +481,7 @@
             }
         }
 
-        window.onload = async () => {
-            document.getElementById('connectWalletBtn').addEventListener('click', connectWallet);
-        };
+        document.getElementById('connectWalletBtn').addEventListener('click', connectWallet);
     </script>
 </body>
 </html>
