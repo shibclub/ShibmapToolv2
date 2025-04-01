@@ -249,7 +249,7 @@
     <div class="search-container">
         <input type="number" id="tokenIdInput" placeholder="Enter Token ID" min="0">
         <button onclick="searchByTokenId()">Search by Token ID</button>
-        <button onclick="loadBlocks()">Query Next Available</button>
+        <button onclick="loadNextAvailable()">Next Available</button>
     </div>
     <div id="blockRange"></div>
     <div id="loading">Loading data...</div>
@@ -288,6 +288,7 @@
         let attributes = [];
         let startBlock = 1;
         let endBlock = 400;
+        let currentTokenId = 0;
         const canvas = document.getElementById('myCanvas');
         const ctx = canvas.getContext('2d');
         let web3, accounts, contract;
@@ -381,7 +382,7 @@
             return { blockNumber, blockHash: "Not found", txCount: 0 };
         }
 
-        async function loadBlocksByRange(start, end) {
+        async function loadBlocksByRange(tokenId, start, end) {
             const tableBody = document.getElementById('blockData');
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
@@ -402,13 +403,14 @@
 
             startBlock = start;
             endBlock = end;
-            blockRangeDiv.textContent = `Token ID ${startBlock / 400} | Blocks ${startBlock} to ${endBlock}`;
+            currentTokenId = tokenId;
+            blockRangeDiv.textContent = `Token ID ${tokenId} | Blocks ${start} to ${end}`;
             blockRangeDiv.style.display = 'block';
 
             blockData = await Promise.all(Array.from({ length: 400 }, (_, i) => fetchBlockData(start + i)));
 
             if (blockData.every(block => block.blockHash === "Not found")) {
-                errorDiv.textContent = `No data for blocks ${startBlock} to ${endBlock}.`;
+                errorDiv.textContent = `No data for blocks ${start} to ${end}.`;
                 errorDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
                 return;
@@ -430,28 +432,33 @@
 
             loadingDiv.style.display = 'none';
             table.style.display = 'table';
+
+            if (contract) {
+                const totalSupply = await contract.methods.totalSupply().call();
+                mintButton.disabled = currentTokenId !== parseInt(totalSupply);
+            }
         }
 
-        async function loadBlocks() {
+        async function loadNextAvailable() {
             if (!contract) {
                 showModal('Please connect your wallet first!');
                 return;
             }
             const totalSupply = await contract.methods.totalSupply().call();
-            const groupId = parseInt(totalSupply);
-            const start = groupId * 400 + 1;
+            const tokenId = parseInt(totalSupply);
+            const start = tokenId * 400 + 1;
             const end = start + 399;
             const currentBlock = await web3.eth.getBlockNumber();
             if (currentBlock < start) {
-                showModal(`Next range ${start}-${end} not yet available. Current block: ${currentBlock}.`);
+                showModal(`Next range ${start}-${end} not available. Current block: ${currentBlock}.`);
                 return;
             }
-            const isMinted = await contract.methods.mintedGroups(groupId).call();
+            const isMinted = await contract.methods.mintedGroups(tokenId).call();
             if (isMinted) {
-                showModal(`Token ID ${groupId} already minted.`);
+                showModal(`Token ID ${tokenId} already minted.`);
                 return;
             }
-            loadBlocksByRange(start, end);
+            loadBlocksByRange(tokenId, start, end);
         }
 
         async function searchByTokenId() {
@@ -460,28 +467,21 @@
                 showModal('Enter a valid Token ID!');
                 return;
             }
-            if (!contract) {
-                showModal('Please connect your wallet first!');
-                return;
-            }
-            const totalSupply = await contract.methods.totalSupply().call();
-            if (tokenId !== parseInt(totalSupply)) {
-                showModal(`Next available Token ID is ${totalSupply}. Cannot skip to ${tokenId}.`);
-                return;
-            }
             const start = tokenId * 400 + 1;
             const end = start + 399;
-            const currentBlock = await web3.eth.getBlockNumber();
+            const currentBlock = contract ? await web3.eth.getBlockNumber() : start;
             if (currentBlock < start) {
                 showModal(`Block range ${start}-${end} not available yet. Current block: ${currentBlock}.`);
                 return;
             }
-            const isMinted = await contract.methods.mintedGroups(tokenId).call();
-            if (isMinted) {
-                showModal(`Token ID ${tokenId} already minted for blocks ${start}-${end}.`);
-                return;
+            if (contract) {
+                const isMinted = await contract.methods.mintedGroups(tokenId).call();
+                if (isMinted) {
+                    showModal(`Token ID ${tokenId} already minted for blocks ${start}-${end}.`);
+                    return;
+                }
             }
-            loadBlocksByRange(start, end);
+            loadBlocksByRange(tokenId, start, end);
         }
 
         function calculateAttributes() {
@@ -529,12 +529,11 @@
             });
             canvas.style.display = 'block';
             document.getElementById('downloadButton').style.display = 'inline-block';
-            document.getElementById('mintBtn').disabled = false;
         }
 
         function downloadImage() {
             const link = document.createElement('a');
-            link.download = `shibmap_${startBlock / 400}.png`;
+            link.download = `shibmap_${currentTokenId}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
         }
@@ -542,6 +541,11 @@
         function startMintCountdown() {
             if (!web3 || !contract || !accounts) {
                 showModal('Connect your wallet first!');
+                return;
+            }
+            const totalSupply = parseInt(contract.methods.totalSupply().call());
+            if (currentTokenId !== totalSupply) {
+                showModal(`Cannot mint Token ID ${currentTokenId}. Next available is ${totalSupply}.`);
                 return;
             }
             const mintButton = document.getElementById('mintBtn');
@@ -561,9 +565,13 @@
         async function mintNFT() {
             const mintButton = document.getElementById('mintBtn');
             try {
+                const totalSupply = parseInt(await contract.methods.totalSupply().call());
+                if (currentTokenId !== totalSupply) {
+                    throw new Error(`Invalid Token ID. Expected ${totalSupply}, got ${currentTokenId}.`);
+                }
                 const imageData = canvas.toDataURL("image/png").split(',')[1];
                 const metadata = {
-                    name: `Shibmap #${startBlock / 400}`,
+                    name: `Shibmap #${currentTokenId}`,
                     description: "A unique Shibmap NFT based on Shibarium blockchain data",
                     image: `data:image/png;base64,${imageData}`,
                     attributes: attributes.map(attr => ({ trait_type: attr.name, value: attr.value }))
