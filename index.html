@@ -106,6 +106,10 @@
             background: #444;
             opacity: 0.7;
         }
+        .attribute-card.current {
+            border: 2px solid #ff8c00;
+            box-shadow: 0 0 15px rgba(255, 140, 0, 0.7);
+        }
         .action-buttons {
             display: flex;
             gap: 15px;
@@ -189,16 +193,16 @@
         <button id="connectWalletBtn" class="action-btn">Connect Wallet</button>
     </div>
     <div class="input-container">
-        <button onclick="loadBlocks()">Query 10 NFTs</button>
+        <button onclick="startFetching()">Start Fetching 10 NFTs</button>
     </div>
     <div id="blockRange"></div>
-    <div id="loading">Loading data...</div>
+    <div id="loading">Fetching blocks...</div>
     <div id="error"></div>
     <div class="preview-container">
         <canvas id="myCanvas" width="1000" height="400"></canvas>
         <div class="action-buttons">
             <button onclick="downloadImage()" id="downloadButton" style="display: none;" class="action-btn">Download Image</button>
-            <button id="mintBtn" class="action-btn" onclick="startMintCountdown()" disabled>Mint Next NFT</button>
+            <button id="mintBtn" class="action-btn" onclick="startMintCountdown()" disabled>Mint Current NFT</button>
         </div>
     </div>
     <div class="attributes-container">
@@ -218,6 +222,7 @@
         let attributesList = [];
         let groupRanges = [];
         let currentMintIndex = 0;
+        let totalFetchedGroups = 0;
         const canvas = document.getElementById('myCanvas');
         const ctx = canvas.getContext('2d');
         let web3, accounts, contract;
@@ -339,7 +344,7 @@
             }
         }
 
-        async function loadBlocks() {
+        async function startFetching() {
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
             const blockRangeDiv = document.getElementById('blockRange');
@@ -362,67 +367,74 @@
                 return;
             }
 
-            blockRangeDiv.textContent = `Previewing 10 NFTs for blocks ${groupRanges[0].startBlock} to ${groupRanges[9].endBlock}`;
+            blockRangeDiv.textContent = `Fetching blocks ${groupRanges[0].startBlock} to ${groupRanges[9].endBlock}...`;
             blockRangeDiv.style.display = 'block';
 
-            const promises = [];
-            for (const range of groupRanges) {
+            blockData = [];
+            attributesList = [];
+            totalFetchedGroups = 0;
+            currentMintIndex = 0;
+
+            const totalSupply = await contract.methods.totalSupply().call();
+            let tokenId = parseInt(totalSupply);
+
+            for (let groupIndex = 0; groupIndex < 10; groupIndex++) {
+                const range = groupRanges[groupIndex];
+                const promises = [];
                 for (let i = range.startBlock; i <= range.endBlock; i++) {
                     promises.push(fetchBlockData(i));
                 }
+
+                const groupData = await Promise.all(promises);
+                blockData = blockData.concat(groupData);
+
+                const hasError = groupData.some(block => block.error);
+                if (hasError) {
+                    errorDiv.textContent = `Error fetching blocks ${range.startBlock}-${range.endBlock}.`;
+                    errorDiv.style.display = 'block';
+                    loadingDiv.style.display = 'none';
+                    return;
+                }
+
+                totalFetchedGroups++;
+                generateNFT(groupIndex, groupData, tokenId);
+                tokenId++;
+
+                if (groupIndex === 0) {
+                    mintButton.disabled = false;
+                    showModal(`NFT 1/10 (Blocks ${range.startBlock}-${range.endBlock}) is ready to mint!`);
+                }
+
+                if (totalFetchedGroups === 10) {
+                    generatePixelImage();
+                    loadingDiv.style.display = 'none';
+                }
             }
-
-            blockData = await Promise.all(promises);
-
-            const hasError = blockData.some(block => block.error);
-            if (hasError) {
-                errorDiv.textContent = "Unable to fetch block data from chain.";
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
-                return;
-            }
-
-            calculateAttributes();
-            generatePixelImage();
-
-            loadingDiv.style.display = 'none';
-            mintButton.disabled = false;
-            currentMintIndex = 0;
         }
 
-        function calculateAttributes() {
-            attributesList = [];
-            const transactionCounts = blockData.map(block => block.txCount);
-            const totalSupply = parseInt(localStorage.getItem('totalSupply') || '0');
-            let tokenId = totalSupply;
-
-            for (let nftIndex = 0; nftIndex < 10; nftIndex++) {
-                const groupStart = nftIndex * 400;
-                const groupEnd = groupStart + 399;
-                const groupTxCounts = transactionCounts.slice(groupStart, groupEnd + 1);
-                let attributes = [];
-                for (let i = 0; i < 10; i++) {
-                    const segmentStart = i * 40;
-                    const segmentEnd = segmentStart + 39;
-                    const segmentTxCount = groupTxCounts.slice(segmentStart, segmentEnd + 1).reduce((sum, count) => sum + count, 0);
-                    const attributeName = attributeOrder[i];
-                    const range = attributeRanges[attributeName];
-                    const attributeIndex = Math.min(Math.floor(segmentTxCount / range), attributeCategories[attributeName].length - 1);
-                    const attributeValue = attributeCategories[attributeName][attributeIndex];
-                    attributes.push({ name: attributeName, value: attributeValue });
-                }
-                attributesList.push(attributes);
-
-                const range = groupRanges[nftIndex];
-                const attributesListDiv = document.getElementById('attributesList');
-                const card = document.createElement('div');
-                card.className = 'attribute-card';
-                card.id = `nft-${nftIndex}`;
-                card.innerHTML = `<p><strong>NFT ${nftIndex + 1} (Token ID: ${tokenId}, Blocks: ${range.startBlock}-${range.endBlock}):</strong></p>` +
-                    attributes.map(attr => `<p>${attr.name.replace(/([A-Z])/g, ' $1').trim()}: ${attr.value}</p>`).join('');
-                attributesListDiv.appendChild(card);
-                tokenId++;
+        function generateNFT(groupIndex, groupData, tokenId) {
+            const transactionCounts = groupData.map(block => block.txCount);
+            let attributes = [];
+            for (let i = 0; i < 10; i++) {
+                const segmentStart = i * 40;
+                const segmentEnd = segmentStart + 39;
+                const segmentTxCount = transactionCounts.slice(segmentStart, segmentEnd + 1).reduce((sum, count) => sum + count, 0);
+                const attributeName = attributeOrder[i];
+                const range = attributeRanges[attributeName];
+                const attributeIndex = Math.min(Math.floor(segmentTxCount / range), attributeCategories[attributeName].length - 1);
+                const attributeValue = attributeCategories[attributeName][attributeIndex];
+                attributes.push({ name: attributeName, value: attributeValue });
             }
+            attributesList[groupIndex] = attributes;
+
+            const range = groupRanges[groupIndex];
+            const attributesListDiv = document.getElementById('attributesList');
+            const card = document.createElement('div');
+            card.className = `attribute-card ${groupIndex === currentMintIndex ? 'current' : ''}`;
+            card.id = `nft-${groupIndex}`;
+            card.innerHTML = `<p><strong>NFT ${groupIndex + 1} (Token ID: ${tokenId}, Blocks: ${range.startBlock}-${range.endBlock}):</strong></p>` +
+                attributes.map(attr => `<p>${attr.name.replace(/([A-Z])/g, ' $1').trim()}: ${attr.value}</p>`).join('');
+            attributesListDiv.appendChild(card);
         }
 
         function getColorForTxCount(txCount) {
@@ -440,15 +452,8 @@
         }
 
         function generatePixelImage() {
-            const errorDiv = document.getElementById('error');
             const canvas = document.getElementById('myCanvas');
             const downloadButton = document.getElementById('downloadButton');
-
-            if (blockData.length !== 4000) {
-                errorDiv.textContent = "Please query 4000 blocks of data first!";
-                errorDiv.style.display = 'block';
-                return;
-            }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const transactionCounts = blockData.map(block => block.txCount);
@@ -481,8 +486,13 @@
                 return;
             }
 
+            if (currentMintIndex >= totalFetchedGroups) {
+                showModal('No more NFTs ready to mint yet. Waiting for more blocks...');
+                return;
+            }
+
             if (currentMintIndex >= 10) {
-                showModal('All 10 NFTs have been minted! Click "Query 10 NFTs" to load more.');
+                showModal('All 10 NFTs have been minted! Click "Start Fetching 10 NFTs" to load more.');
                 return;
             }
 
@@ -511,8 +521,7 @@
                     showModal(`NFT for blocks ${range.startBlock}-${range.endBlock} already minted by someone else! Skipping...`);
                     updateMintStatus(currentMintIndex, "Minted (Skipped)");
                     currentMintIndex++;
-                    mintButton.classList.remove('loading');
-                    mintButton.disabled = false;
+                    proceedToNextNFT();
                     return;
                 }
 
@@ -534,15 +543,7 @@
 
                 updateMintStatus(currentMintIndex, "Minted");
                 currentMintIndex++;
-
-                if (currentMintIndex < 10) {
-                    showModal(`NFT minted successfully! Ready to mint NFT ${currentMintIndex + 1}/10.`);
-                } else {
-                    showModal('All 10 NFTs minted successfully! Click "Query 10 NFTs" to load more.');
-                }
-
-                mintButton.classList.remove('loading');
-                mintButton.disabled = false;
+                proceedToNextNFT();
             } catch (error) {
                 showModal('Minting failed: ' + error.message);
                 mintButton.classList.remove('loading');
@@ -553,10 +554,30 @@
         function updateMintStatus(index, status) {
             const card = document.getElementById(`nft-${index}`);
             if (card) {
+                card.classList.remove('current');
                 card.classList.add('minted');
                 card.innerHTML += `<p><strong>Status:</strong> ${status}</p>`;
             }
             groupRanges[index].minted = true;
+        }
+
+        function proceedToNextNFT() {
+            const mintButton = document.getElementById('mintBtn');
+            mintButton.classList.remove('loading');
+            if (currentMintIndex < totalFetchedGroups) {
+                const nextCard = document.getElementById(`nft-${currentMintIndex}`);
+                if (nextCard) {
+                    nextCard.classList.add('current');
+                    showModal(`NFT ${currentMintIndex + 1}/10 (Blocks ${groupRanges[currentMintIndex].startBlock}-${groupRanges[currentMintIndex].endBlock}) is ready to mint!`);
+                }
+                mintButton.disabled = false;
+            } else if (currentMintIndex < 10) {
+                showModal('Waiting for more blocks to be fetched...');
+                mintButton.disabled = true;
+            } else {
+                showModal('All 10 NFTs minted successfully! Click "Start Fetching 10 NFTs" to load more.');
+                mintButton.disabled = true;
+            }
         }
 
         window.onload = () => {
