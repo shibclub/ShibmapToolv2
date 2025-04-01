@@ -30,20 +30,9 @@
             margin: 10px 0;
             font-size: 16px;
         }
-        .search-container {
-            display: flex;
-            gap: 10px;
+        .input-container {
+            text-align: center;
             margin-bottom: 20px;
-            justify-content: center;
-            align-items: center;
-        }
-        .search-container input {
-            padding: 5px;
-            border-radius: 5px;
-            border: 1px solid #ff8c00;
-            background: #333;
-            color: #fff;
-            width: 150px;
         }
         button {
             padding: 5px 15px;
@@ -222,7 +211,7 @@
         }
         @media (max-width: 768px) {
             h1 { font-size: 32px; }
-            .search-container { flex-wrap: wrap; gap: 8px; }
+            .input-container { flex-wrap: wrap; gap: 8px; }
             button { padding: 3px 8px; font-size: 12px; }
             table { width: 100%; display: block; overflow-x: auto; }
             th, td { padding: 8px; font-size: 12px; min-width: 80px; }
@@ -246,10 +235,8 @@
         </div>
         <button id="connectWalletBtn" class="action-btn">Connect Wallet</button>
     </div>
-    <div class="search-container">
-        <input type="number" id="tokenIdInput" placeholder="Enter Token ID" min="0">
-        <button onclick="searchByTokenId()">Search by Token ID</button>
-        <button onclick="loadNextAvailable()">Next Available</button>
+    <div class="input-container">
+        <button onclick="loadBlocks()">Query</button>
     </div>
     <div id="blockRange"></div>
     <div id="loading">Loading data...</div>
@@ -288,7 +275,8 @@
         let attributes = [];
         let startBlock = 1;
         let endBlock = 400;
-        let currentTokenId = 0;
+        let currentGroupId = 0;
+        let groupRanges = [];
         const canvas = document.getElementById('myCanvas');
         const ctx = canvas.getContext('2d');
         let web3, accounts, contract;
@@ -382,7 +370,27 @@
             return { blockNumber, blockHash: "Not found", txCount: 0 };
         }
 
-        async function loadBlocksByRange(tokenId, start, end) {
+        async function findNextAvailableGroups() {
+            if (!contract) return [];
+            const currentBlock = await web3.eth.getBlockNumber();
+            const maxGroupId = Math.floor(currentBlock / 400);
+            const ranges = [];
+            let groupId = 0;
+            while (ranges.length < 10 && groupId <= maxGroupId) {
+                const isMinted = await contract.methods.mintedGroups(groupId).call();
+                if (!isMinted) {
+                    const start = groupId * 400 + 1;
+                    const end = start + 399;
+                    if (currentBlock >= start) {
+                        ranges.push({ groupId, startBlock: start, endBlock: end });
+                    }
+                }
+                groupId++;
+            }
+            return ranges;
+        }
+
+        async function loadBlocks() {
             const tableBody = document.getElementById('blockData');
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
@@ -401,16 +409,24 @@
             downloadButton.style.display = 'none';
             mintButton.disabled = true;
 
-            startBlock = start;
-            endBlock = end;
-            currentTokenId = tokenId;
-            blockRangeDiv.textContent = `Token ID ${tokenId} | Blocks ${start} to ${end}`;
+            groupRanges = await findNextAvailableGroups();
+            if (groupRanges.length === 0) {
+                errorDiv.textContent = "No available block ranges to mint. Wait for new blocks.";
+                errorDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+                return;
+            }
+
+            currentGroupId = groupRanges[0].groupId;
+            startBlock = groupRanges[0].startBlock;
+            endBlock = groupRanges[0].endBlock;
+            blockRangeDiv.textContent = `Next 10 available ranges: ${groupRanges.map(r => `${r.startBlock}-${r.endBlock}`).join(', ')}<br>Showing: ${startBlock} to ${endBlock}`;
             blockRangeDiv.style.display = 'block';
 
-            blockData = await Promise.all(Array.from({ length: 400 }, (_, i) => fetchBlockData(start + i)));
+            blockData = await Promise.all(Array.from({ length: 400 }, (_, i) => fetchBlockData(startBlock + i)));
 
             if (blockData.every(block => block.blockHash === "Not found")) {
-                errorDiv.textContent = `No data for blocks ${start} to ${end}.`;
+                errorDiv.textContent = `No data for blocks ${startBlock} to ${endBlock}.`;
                 errorDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
                 return;
@@ -432,56 +448,7 @@
 
             loadingDiv.style.display = 'none';
             table.style.display = 'table';
-
-            if (contract) {
-                const totalSupply = await contract.methods.totalSupply().call();
-                mintButton.disabled = currentTokenId !== parseInt(totalSupply);
-            }
-        }
-
-        async function loadNextAvailable() {
-            if (!contract) {
-                showModal('Please connect your wallet first!');
-                return;
-            }
-            const totalSupply = await contract.methods.totalSupply().call();
-            const tokenId = parseInt(totalSupply);
-            const start = tokenId * 400 + 1;
-            const end = start + 399;
-            const currentBlock = await web3.eth.getBlockNumber();
-            if (currentBlock < start) {
-                showModal(`Next range ${start}-${end} not available. Current block: ${currentBlock}.`);
-                return;
-            }
-            const isMinted = await contract.methods.mintedGroups(tokenId).call();
-            if (isMinted) {
-                showModal(`Token ID ${tokenId} already minted.`);
-                return;
-            }
-            loadBlocksByRange(tokenId, start, end);
-        }
-
-        async function searchByTokenId() {
-            const tokenId = parseInt(document.getElementById('tokenIdInput').value);
-            if (isNaN(tokenId) || tokenId < 0) {
-                showModal('Enter a valid Token ID!');
-                return;
-            }
-            const start = tokenId * 400 + 1;
-            const end = start + 399;
-            const currentBlock = contract ? await web3.eth.getBlockNumber() : start;
-            if (currentBlock < start) {
-                showModal(`Block range ${start}-${end} not available yet. Current block: ${currentBlock}.`);
-                return;
-            }
-            if (contract) {
-                const isMinted = await contract.methods.mintedGroups(tokenId).call();
-                if (isMinted) {
-                    showModal(`Token ID ${tokenId} already minted for blocks ${start}-${end}.`);
-                    return;
-                }
-            }
-            loadBlocksByRange(tokenId, start, end);
+            mintButton.disabled = false;
         }
 
         function calculateAttributes() {
@@ -533,27 +500,31 @@
 
         function downloadImage() {
             const link = document.createElement('a');
-            link.download = `shibmap_${currentTokenId}.png`;
+            link.download = `shibmap_${currentGroupId}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
         }
 
-        function startMintCountdown() {
+        async function startMintCountdown() {
             if (!web3 || !contract || !accounts) {
-                showModal('Connect your wallet first!');
-                return;
-            }
-            const totalSupply = parseInt(contract.methods.totalSupply().call());
-            if (currentTokenId !== totalSupply) {
-                showModal(`Cannot mint Token ID ${currentTokenId}. Next available is ${totalSupply}.`);
+                showModal('Please connect your wallet first!');
                 return;
             }
             const mintButton = document.getElementById('mintBtn');
             mintButton.disabled = true;
             mintButton.classList.add('loading');
-            let countdown = 5;
-            const interval = setInterval(() => {
-                showModal(`Minting in ${countdown}s...`);
+            let countdown = 10;
+            const interval = setInterval(async () => {
+                const lowestGroupId = groupRanges[0].groupId;
+                const isLowestMinted = await contract.methods.mintedGroups(lowestGroupId).call();
+                if (!isLowestMinted) {
+                    clearInterval(interval);
+                    showModal(`Cannot mint ${currentGroupId}. Lowest available ID ${lowestGroupId} is not minted yet.`);
+                    mintButton.classList.remove('loading');
+                    mintButton.disabled = false;
+                    return;
+                }
+                showModal(`Preparing to mint NFT for ${startBlock}-${endBlock}... ${countdown}s`);
                 countdown--;
                 if (countdown < 0) {
                     clearInterval(interval);
@@ -565,13 +536,14 @@
         async function mintNFT() {
             const mintButton = document.getElementById('mintBtn');
             try {
-                const totalSupply = parseInt(await contract.methods.totalSupply().call());
-                if (currentTokenId !== totalSupply) {
-                    throw new Error(`Invalid Token ID. Expected ${totalSupply}, got ${currentTokenId}.`);
+                const lowestGroupId = groupRanges[0].groupId;
+                const isLowestMinted = await contract.methods.mintedGroups(lowestGroupId).call();
+                if (!isLowestMinted) {
+                    throw new Error(`Lowest ID ${lowestGroupId} not minted. Must mint in order.`);
                 }
                 const imageData = canvas.toDataURL("image/png").split(',')[1];
                 const metadata = {
-                    name: `Shibmap #${currentTokenId}`,
+                    name: `Shibmap #${currentGroupId}`,
                     description: "A unique Shibmap NFT based on Shibarium blockchain data",
                     image: `data:image/png;base64,${imageData}`,
                     attributes: attributes.map(attr => ({ trait_type: attr.name, value: attr.value }))
