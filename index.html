@@ -178,39 +178,6 @@
             opacity: 0.7;
             pointer-events: none;
         }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background: #2d2d2d;
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            color: #fff;
-            max-width: 350px;
-            border: 2px solid #ff8c00;
-            box-shadow: 0 0 20px rgba(255, 140, 0, 0.5);
-        }
-        .modal-content p {
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        .modal-content button {
-            padding: 10px 20px;
-            background: #ff8c00;
-            color: #1a1a1a;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-        }
         @media (max-width: 768px) {
             h1 { font-size: 32px; }
             .input-container { flex-wrap: wrap; gap: 8px; }
@@ -238,7 +205,6 @@
             .attribute-card { padding: 8px; }
             .attribute-card p { font-size: 12px; }
             .action-btn { padding: 8px 16px; font-size: 14px; }
-            .modal-content { max-width: 90%; padding: 15px; }
         }
     </style>
 </head>
@@ -273,12 +239,6 @@
     <div class="attributes-container">
         <h2>Shibmap Attributes</h2>
         <div id="attributesList"></div>
-    </div>
-    <div id="modal" class="modal">
-        <div class="modal-content">
-            <p id="modalMessage"></p>
-            <button onclick="closeModal()">OK</button>
-        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
@@ -318,21 +278,8 @@
             ShibaRarity: 2000
         };
 
-        function showModal(message) {
-            document.getElementById('modalMessage').innerHTML = message;
-            document.getElementById('modal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('modal').style.display = 'none';
-        }
-
         function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                showModal('Hash copied to clipboard!');
-            }).catch(err => {
-                showModal('Failed to copy hash: ' + err);
-            });
+            navigator.clipboard.writeText(text);
         }
 
         async function fetchBlockData(blockNumber) {
@@ -383,7 +330,7 @@
             downloadButton.style.display = 'none';
             mintButton.disabled = true;
 
-            blockRangeDiv.textContent = `Minting for blocks ${startBlock} to ${endBlock}`;
+            blockRangeDiv.textContent = `Processing blocks ${startBlock} to ${endBlock}`;
             blockRangeDiv.style.display = 'block';
 
             const promises = [];
@@ -398,15 +345,15 @@
                 errorDiv.textContent = "Unable to fetch data.";
                 errorDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
-                return;
+                return false;
             }
 
             const allNotFound = blockData.every(block => block.blockHash === "Not found");
             if (allNotFound) {
-                errorDiv.textContent = `No data found for blocks ${startBlock} to ${endBlock}.`;
+                errorDiv.textContent = `No data for blocks ${startBlock} to ${endBlock}.`;
                 errorDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
-                return;
+                return false;
             }
 
             blockData.forEach(block => {
@@ -430,6 +377,7 @@
 
             loadingDiv.style.display = 'none';
             table.style.display = 'table';
+            return true;
         }
 
         function calculateAttributes() {
@@ -493,7 +441,7 @@
             const mintButton = document.getElementById('mintBtn');
 
             if (blockData.length !== 400) {
-                errorDiv.textContent = "Please query 400 blocks of data first!";
+                errorDiv.textContent = "Please query 400 blocks first!";
                 errorDiv.style.display = 'block';
                 return;
             }
@@ -528,33 +476,43 @@
         async function startAutoMint() {
             const privateKey = document.getElementById('privateKeyInput').value.trim();
             if (!privateKey.startsWith('0x') || privateKey.length !== 66) {
-                showModal('Invalid private key format.');
+                document.getElementById('error').textContent = "Invalid private key.";
+                document.getElementById('error').style.display = 'block';
                 return;
             }
 
+            web3 = new Web3('https://www.shibrpc.com');
             try {
-                web3 = new Web3('https://www.shibrpc.com');
                 const account = web3.eth.accounts.privateKeyToAccount(privateKey);
                 web3.eth.accounts.wallet.add(account);
                 accounts = [account.address];
                 contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
 
-                const totalSupply = await contract.methods.totalSupply().call();
-                const nextGroupId = parseInt(totalSupply);
-                startBlock = nextGroupId * 400 + 1;
-                endBlock = startBlock + 399;
+                let totalSupply = await contract.methods.totalSupply().call();
+                let nextGroupId = parseInt(totalSupply);
 
-                const isMinted = await contract.methods.mintedGroups(nextGroupId).call();
-                if (isMinted) {
-                    showModal(`Group ${nextGroupId} (Blocks ${startBlock}-${endBlock}) already minted.`);
-                    return;
+                while (true) {
+                    startBlock = nextGroupId * 400 + 1;
+                    endBlock = startBlock + 399;
+
+                    const isMinted = await contract.methods.mintedGroups(nextGroupId).call();
+                    if (isMinted) {
+                        nextGroupId++;
+                        continue;
+                    }
+
+                    const success = await loadBlocks();
+                    if (!success) {
+                        nextGroupId++;
+                        continue;
+                    }
+
+                    await mintNFT();
+                    break;
                 }
-
-                showModal(`Minting Token ID ${nextGroupId} for blocks ${startBlock}-${endBlock}...`);
-                await loadBlocks();
-                await mintNFT();
             } catch (error) {
-                showModal('Error: ' + error.message);
+                document.getElementById('error').textContent = "Error: " + error.message;
+                document.getElementById('error').style.display = 'block';
             }
         }
 
@@ -577,16 +535,18 @@
                 const tokenURI = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
                 const attributeValues = attributes.map(attr => attr.value);
 
-                showModal('Minting NFT... Please wait');
-                const tx = await contract.methods.mintNFT(tokenURI, attributeValues, startBlock, endBlock)
+                await contract.methods.mintNFT(tokenURI, attributeValues, startBlock, endBlock)
                     .send({ from: accounts[0], gas: 300000 });
-                showModal(`NFT minted! Tx: ${tx.transactionHash}`);
             } catch (error) {
-                showModal('Minting failed: ' + error.message);
-            } finally {
+                document.getElementById('error').textContent = "Minting failed: " + error.message;
+                document.getElementById('error').style.display = 'block';
                 mintButton.classList.remove('loading');
                 mintButton.disabled = false;
+                throw error;
             }
+
+            mintButton.classList.remove('loading');
+            mintButton.disabled = false;
         }
     </script>
 </body>
