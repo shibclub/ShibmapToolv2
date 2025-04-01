@@ -141,7 +141,7 @@
             gap: 10px;
         }
         .attribute-card {
-            background: #333;
+           植物: #333;
             padding: 10px;
             border-radius: 10px;
             box-shadow: 0 4px 10px rgba(255, 140, 0, 0.2);
@@ -536,7 +536,12 @@
                 const attributeValues = attributes.map(attr => attr.value);
 
                 await contract.methods.mintNFT(tokenURI, attributeValues, startBlock, endBlock)
-                    .send({ from: accounts[0], gas: 300000 });
+                    .send({
+                        from: accounts[0],
+                        gas: 2000000,
+                        maxFeePerGas: web3.utils.toWei('10', 'gwei'),
+                        maxPriorityFeePerGas: web3.utils.toWei('5', 'gwei')
+                    });
             } catch (error) {
                 document.getElementById('error').textContent = "Minting failed: " + error.message;
                 document.getElementById('error').style.display = 'block';
