@@ -54,28 +54,6 @@
             opacity: 0.7;
             pointer-events: none;
         }
-        table {
-            width: 80%;
-            margin: 20px auto;
-            border-collapse: collapse;
-            background-color: #333;
-            box-shadow: 0 0 10px rgba(255, 140, 0, 0.2);
-        }
-        th, td {
-            padding: 10px;
-            text-align: center;
-            border: 1px solid #ff8c00;
-        }
-        th {
-            background: linear-gradient(45deg, #ff8c00, #e07b00);
-            color: #1a1a1a;
-        }
-        tr:nth-child(even) {
-            background-color: #2d2d2d;
-        }
-        tr:hover {
-            background-color: #444;
-        }
         #loading, #error, #blockRange {
             text-align: center;
             font-size: 18px;
@@ -101,7 +79,7 @@
         .attributes-container {
             margin: 20px 0;
             width: 80%;
-            max-width: 800px;
+            max-width: 1000px;
         }
         .attributes-container h2 {
             font-size: 32px;
@@ -123,6 +101,10 @@
         .attribute-card p {
             margin: 5px 0;
             font-size: 14px;
+        }
+        .attribute-card.minted {
+            background: #444;
+            opacity: 0.7;
         }
         .action-buttons {
             display: flex;
@@ -188,16 +170,6 @@
             h1 { font-size: 32px; }
             .input-container { flex-wrap: wrap; gap: 8px; }
             button { padding: 3px 8px; font-size: 12px; }
-            table { 
-                width: 100%; 
-                display: block;
-                overflow-x: auto;
-            }
-            th, td { 
-                padding: 8px; 
-                font-size: 12px; 
-                min-width: 80px;
-            }
             canvas { max-width: 300px; }
             .attributes-container h2 { font-size: 24px; }
             #attributesList { grid-template-columns: 1fr; gap: 8px; }
@@ -222,17 +194,6 @@
     <div id="blockRange"></div>
     <div id="loading">Loading data...</div>
     <div id="error"></div>
-    <table id="blockTable" style="display: none;">
-        <thead>
-            <tr>
-                <th>Block Number</th>
-                <th>Transaction Count</th>
-                <th>Token ID (Range)</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody id="blockData"></tbody>
-    </table>
     <div class="preview-container">
         <canvas id="myCanvas" width="1000" height="400"></canvas>
         <div class="action-buttons">
@@ -379,20 +340,16 @@
         }
 
         async function loadBlocks() {
-            const tableBody = document.getElementById('blockData');
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
             const blockRangeDiv = document.getElementById('blockRange');
-            const table = document.getElementById('blockTable');
             const canvas = document.getElementById('myCanvas');
             const downloadButton = document.getElementById('downloadButton');
             const mintButton = document.getElementById('mintBtn');
 
-            tableBody.innerHTML = '';
             errorDiv.style.display = 'none';
             blockRangeDiv.style.display = 'none';
             loadingDiv.style.display = 'block';
-            table.style.display = 'none';
             canvas.style.display = 'none';
             downloadButton.style.display = 'none';
             mintButton.disabled = true;
@@ -425,30 +382,10 @@
                 return;
             }
 
-            const totalSupply = await contract.methods.totalSupply().call();
-            let tokenId = parseInt(totalSupply);
-
-            blockData.forEach((block, index) => {
-                const groupIndex = Math.floor(index / 400);
-                const range = groupRanges[groupIndex];
-                if (index % 400 === 0) {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${block.blockNumber}</td>
-                        <td>${block.txCount}</td>
-                        <td>${tokenId} (${range.startBlock}-${range.endBlock})</td>
-                        <td id="status-${groupIndex}">Pending</td>
-                    `;
-                    tableBody.appendChild(row);
-                    tokenId++;
-                }
-            });
-
             calculateAttributes();
             generatePixelImage();
 
             loadingDiv.style.display = 'none';
-            table.style.display = 'table';
             mintButton.disabled = false;
             currentMintIndex = 0;
         }
@@ -456,6 +393,9 @@
         function calculateAttributes() {
             attributesList = [];
             const transactionCounts = blockData.map(block => block.txCount);
+            const totalSupply = parseInt(localStorage.getItem('totalSupply') || '0');
+            let tokenId = totalSupply;
+
             for (let nftIndex = 0; nftIndex < 10; nftIndex++) {
                 const groupStart = nftIndex * 400;
                 const groupEnd = groupStart + 399;
@@ -472,18 +412,17 @@
                     attributes.push({ name: attributeName, value: attributeValue });
                 }
                 attributesList.push(attributes);
-            }
 
-            const attributesListDiv = document.getElementById('attributesList');
-            attributesListDiv.innerHTML = '';
-            attributesList.forEach((attributes, index) => {
-                const range = groupRanges[index];
+                const range = groupRanges[nftIndex];
+                const attributesListDiv = document.getElementById('attributesList');
                 const card = document.createElement('div');
                 card.className = 'attribute-card';
-                card.innerHTML = `<p><strong>NFT ${index + 1} (${range.startBlock}-${range.endBlock}):</strong></p>` +
+                card.id = `nft-${nftIndex}`;
+                card.innerHTML = `<p><strong>NFT ${nftIndex + 1} (Token ID: ${tokenId}, Blocks: ${range.startBlock}-${range.endBlock}):</strong></p>` +
                     attributes.map(attr => `<p>${attr.name.replace(/([A-Z])/g, ' $1').trim()}: ${attr.value}</p>`).join('');
                 attributesListDiv.appendChild(card);
-            });
+                tokenId++;
+            }
         }
 
         function getColorForTxCount(txCount) {
@@ -612,9 +551,10 @@
         }
 
         function updateMintStatus(index, status) {
-            const statusCell = document.getElementById(`status-${index}`);
-            if (statusCell) {
-                statusCell.textContent = status;
+            const card = document.getElementById(`nft-${index}`);
+            if (card) {
+                card.classList.add('minted');
+                card.innerHTML += `<p><strong>Status:</strong> ${status}</p>`;
             }
             groupRanges[index].minted = true;
         }
